@@ -1,0 +1,52 @@
+from __future__ import with_statement
+__license__   = 'GPL v3'
+__copyright__ = '2013, Robin Watkins <robwatkins@gmail.com>'
+
+import re
+#
+# Calibre recipe to turn Crazy Guy On A Bike journals into a single document for use on an e-reader.
+#
+class CrazyGuyOnABikeRecipe(AutomaticNewsRecipe):
+    
+    ###### Replace this with the title of the journal #####
+    title          = u'In Search of the Long Legged Blondes of Eastern Europe'
+    
+    ##### Replace this with the index URL for the specific journal #####
+    main_url = 'http://www.crazyguyonabike.com/doc/?o=1&doc_id=12556&v=GT'
+
+    ##### the following configuration items are currently ignored #####
+    oldest_article = 7
+    max_articles_per_feed = 100
+    auto_cleanup = True
+
+    #Return a list of articles for a journal. Currently grouped into one section named 'Journal'
+    def parse_index(self):       
+        soup = self.index_to_soup(self.main_url)
+        result = []
+        sect_result = []
+        for item in [dd.find('a') for dd in soup.findAll('dd')]:
+            title = item.string
+            url = 'http://www.crazyguyonabike.com/' + item['href']
+            sect_result.append(dict(title=title, url=url, date='',description='', content=''))
+        result.append(['Journal', sect_result])
+        return result
+    
+    #Get the print version for a specific URL
+    def print_version(self, url):
+        index = url.index('?')
+        printable = url[:index] + 'printable/' + url[index:]
+        return printable
+        
+    #Strip out from the article any divs containing google maps
+    #as they don't render properly.
+    #
+    #ps - the calibre docs here seem to be wrong. They specify a tuple (article_html, extracted_title)
+    #but it only works if you return the raw html
+    def extract_readable_article(self, html, url):
+        soup = self.index_to_soup(url)
+        for item in soup.findAll(id=re.compile('map_.*')):
+            item.findParents('div')[0].extract()
+        return str(soup)
+        #Note: to get an interactive prompt during ebook-convert uncomment:
+        #from calibre import ipython
+        #ipython(locals())

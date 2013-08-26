@@ -13,6 +13,9 @@ class CrazyGuyOnABikeRecipe(AutomaticNewsRecipe):
     
     ##### Replace this with the index URL for the specific journal #####
     main_url = 'http://www.crazyguyonabike.com/doc/?o=1&doc_id=12556&v=GT'
+    
+    ##### Set this variable to only download the last n articles - if not set will download all articles #####
+    last_n = 1
 
     ##### the following configuration items are currently ignored #####
     oldest_article = 7
@@ -25,10 +28,15 @@ class CrazyGuyOnABikeRecipe(AutomaticNewsRecipe):
         result = []
         sect_result = []
         for item in [dd.find('a') for dd in soup.findAll('dd')]:
+            if item == None:
+                continue
             title = item.string
             url = 'http://www.crazyguyonabike.com/' + item['href']
             sect_result.append(dict(title=title, url=url, date='',description='', content=''))
-        result.append(['Journal', sect_result])
+        if self.last_n != None:
+            result.append(['Journal', sect_result[-(self.last_n):]])
+        else:
+            result.append(['Journal', sect_result])
         return result
     
     #Get the print version for a specific URL

@@ -3,46 +3,93 @@ __license__   = 'GPL v3'
 __copyright__ = '2013, Robin Watkins <robwatkins@gmail.com>'
 
 import re
+import json
+import os
+from calibre.utils.config import config_dir
 #
 # Calibre recipe to turn Crazy Guy On A Bike journals into a single document for use on an e-reader.
 #
 class CrazyGuyOnABikeRecipe(AutomaticNewsRecipe):
     
     ###### Replace this with the title of the journal #####
-    title          = u'In Search of the Long Legged Blondes of Eastern Europe'
+    title          = u'Crazy Guy On A Bike'
+       
+    ##### Set this variable to only download the last n articles - if not set will download all unread articles #####
+    last_n = None
     
-    ##### Replace this with the index URL for the specific journal #####
-    main_url = 'http://www.crazyguyonabike.com/doc/?o=1&doc_id=12556&v=GT'
+    ##### List of journals to monitor - the URL should point to the main journal page #####
+    feeds = [(u'In Search of the Long Legged Blondes of Eastern Europe', u'http://www.crazyguyonabike.com/doc/?o=1&doc_id=12556&v=GT'),
+             (u'West From Japan',u'http://www.crazyguyonabike.com/doc/?doc_id=10893'),
+             (u'Heading east to the Caspian and beyond',u'http://www.crazyguyonabike.com/doc/?o=1&doc_id=11347&v=3a0')
+             ]
+
+    ##### Set to true to ignore last downloaded article for each journal. Essentially starts download from scratch. #####
+    force = False 
     
-    ##### Set this variable to only download the last n articles - if not set will download all articles #####
-    last_n = 1
+    ##### Script variables - do not change below this line #####
+    feeds_last_downloaded_article = {} #dictionary storing map of feed to last downloaded article url
 
-    ##### the following configuration items are currently ignored #####
-    oldest_article = 7
-    max_articles_per_feed = 100
-    auto_cleanup = True
-
-    #Return a list of articles for a journal. Currently grouped into one section named 'Journal'
-    def parse_index(self):       
-        soup = self.index_to_soup(self.main_url)
-        result = []
-        sect_result = []
-        for item in [dd.find('a') for dd in soup.findAll('dd')]:
-            if item == None:
-                continue
-            title = item.string
-            url = 'http://www.crazyguyonabike.com/' + item['href']
-            sect_result.append(dict(title=title, url=url, date='',description='', content=''))
-        if self.last_n != None:
-            result.append(['Journal', sect_result[-(self.last_n):]])
-        else:
-            result.append(['Journal', sect_result])
+    #Return a list of articles to download for each journal.
+    #Reads Crazyguyonabike.control to get the last downloaded article for each journal to ensure that only
+    #non-downloaded articles are queued for download.
+    def parse_index(self):   
+        result = []    
+        for feed,url in self.feeds:
+            print 'Parsing articles for journal "' + feed + '"'
+            soup = self.index_to_soup(url)
+            sect_result = []
+            last_downloaded_article_url = self.get_last_downloaded_entry(feed)
+            ignore = True
+            if last_downloaded_article_url == None:
+                print 'No last downloaded article for "' + feed + '" - downloading everything.'
+                ignore = False
+            for item in [dd.find('a') for dd in soup.findAll('dd')]:
+                if item == None:
+                    continue
+                title = item.string
+                url = 'http://www.crazyguyonabike.com' + item['href']        
+                if ignore == False or self.force == True:
+                    sect_result.append(dict(title=title, url=url, date='',description='', content=''))
+                elif last_downloaded_article_url == self.print_version(url):
+                    print 'Got to last downloaded article for "' + feed + '"'
+                    ignore = False                              
+            if len(sect_result) > 0:
+                if self.last_n != None:
+                    result.append([feed, sect_result[-(self.last_n):]])
+                else:
+                    result.append([feed, sect_result])
+                #Set last downloaded article to be the last one added to sect_result
+                self.feeds_last_downloaded_article[feed] = self.print_version(sect_result[-1]["url"])
+            else:
+                print 'No new articles to download'
+        if len(result) == 0:
+            self.abort_recipe_processing('No feeds have articles to download')
         return result
+    
+    #Read the control file to get the last downloaded article for each specific feed
+    def get_last_downloaded_entry(self,journal):
+        try:
+            if(self.feeds_last_downloaded_article == {}):
+                f = open(os.path.join(config_dir,'Crazyguyonabike.control'), 'r')
+                self.feeds_last_downloaded_article = json.loads(f.read())
+                f.close()
+            return self.feeds_last_downloaded_article[journal]
+        except:
+            return None
+    
+    # Run at the end to perform cleanup tasks        
+    def cleanup(self):
+        #save latest status to the control file
+        f = open(os.path.join(config_dir,'Crazyguyonabike.control'), 'w')
+        f.write(json.dumps(self.feeds_last_downloaded_article))
+        f.close()        
     
     #Get the print version for a specific URL
     def print_version(self, url):
         index = url.index('?')
-        printable = url[:index] + 'printable/' + url[index:]
+        #Find location of last & in the URL in order to strip the version out
+        index_last_and = url.rindex('&')
+        printable = url[:index] + 'printable/' + url[index:index_last_and]
         return printable
         
     #Strip out from the article any divs containing google maps
@@ -54,6 +101,7 @@ class CrazyGuyOnABikeRecipe(AutomaticNewsRecipe):
         soup = self.index_to_soup(url)
         for item in soup.findAll(id=re.compile('map_.*')):
             item.findParents('div')[0].extract()
+        
         return str(soup)
         #Note: to get an interactive prompt during ebook-convert uncomment:
         #from calibre import ipython

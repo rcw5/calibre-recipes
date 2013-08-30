@@ -17,6 +17,9 @@ class CrazyGuyOnABikeRecipe(AutomaticNewsRecipe):
     ##### Set this variable to only download the last n articles - if not set will download all unread articles #####
     last_n = None
     
+    ##### Set this variable to only download the first n articles - if not set will download all unread articles #####
+    first_n = None
+    
     ##### List of journals to monitor - the URL should point to the main journal page #####
     feeds = [(u'In Search of the Long Legged Blondes of Eastern Europe', u'http://www.crazyguyonabike.com/doc/?o=1&doc_id=12556&v=GT'),
              (u'West From Japan',u'http://www.crazyguyonabike.com/doc/?doc_id=10893'),
@@ -43,13 +46,19 @@ class CrazyGuyOnABikeRecipe(AutomaticNewsRecipe):
             if last_downloaded_article_url == None:
                 print 'No last downloaded article for "' + feed + '" - downloading everything.'
                 ignore = False
+                
+            #Read all links on the journal homepage
             for item in [dd.find('a') for dd in soup.findAll('dd')]:
-                if item == None:
+                if item == None: #Sometimes a <dd> does not have any links.
                     continue
                 title = item.string
-                url = 'http://www.crazyguyonabike.com' + item['href']        
+                url = 'http://www.crazyguyonabike.com' + item['href']     
+                #Either keep looking for first unread article or add unread articles to sect_result
                 if ignore == False or self.force == True:
                     sect_result.append(dict(title=title, url=url, date='',description='', content=''))
+                    #break out of loop if we have downloaded first_n articles
+                    if self.first_n != None and len(sect_result) == self.first_n:
+                        break
                 elif last_downloaded_article_url == self.print_version(url):
                     print 'Got to last downloaded article for "' + feed + '"'
                     ignore = False                              
